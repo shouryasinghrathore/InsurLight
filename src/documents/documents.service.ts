@@ -24,9 +24,9 @@ export class DocumentsService {
 
         // 2. Split text into chunks
         const splitter = new RecursiveCharacterTextSplitter({
-            chunkSize: 1000,
-            chunkOverlap: 200,
-        });
+            chunkSize: 200,    // smaller chunks (~200 chars)
+            chunkOverlap: 20,  // less overlap
+          });
         const splitDocs = await splitter.splitDocuments(docs);
 
         // 3. Create collection in Chroma Cloud

@@ -1,46 +1,54 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ChromaService } from '../chroma/chroma.service';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { GeminiEmbeddingFunction } from '../chroma/gemini-embedding.function';
 
 @Injectable()
 export class QuestionsService {
-    private gemini: GoogleGenerativeAI;
-    private embeddingFn: GeminiEmbeddingFunction;
+  private readonly logger = new Logger(QuestionsService.name);
 
-    constructor(private readonly chromaService: ChromaService) {
-        this.gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        this.embeddingFn = new GeminiEmbeddingFunction(process.env.GEMINI_API_KEY);
-    }
+  private gemini: GoogleGenerativeAI;
+  private embeddingFn: GeminiEmbeddingFunction;
 
-    async askQuestion(question: string, collectionName: string) {
-        // Embed the question via Gemini
-        const queryEmbeddings = await this.embeddingFn.generate([question]);
+  constructor(private readonly chromaService: ChromaService) {
+    this.gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    this.embeddingFn = new GeminiEmbeddingFunction(process.env.GEMINI_API_KEY);
+  }
 
-        // Retrieve from Chroma Cloud using our custom embedding function
-        const client = this.chromaService.getClient();
-        const collection = await client.getCollection({
-            name: collectionName,
-            embeddingFunction: this.embeddingFn,  // matched signature
-        });
+  async askQuestion(question: string, collectionName: string) {
+    this.logger.log(`Received question: "${question}"`);
 
-        const results = await collection.query({
-            queryEmbeddings,
-            nResults: 3,
-        });
+    const queryEmbeddings = await this.embeddingFn.generate([question]);
 
-        const context = results.documents.flat().join('\n');
+    const client = this.chromaService.getClient();
 
-        // Generate a simple, patient-friendly answer with Gemini
-        const model = this.gemini.getGenerativeModel({ model: 'models/gemini-2.0-flash' });
-        const prompt = `Base your answer ONLY on the provided context".
+    const collection = await client.getCollection({
+      name: collectionName,
+      embeddingFunction: this.embeddingFn,
+    });
+
+    const results = await collection.query({
+      queryEmbeddings,
+      nResults: 2,
+    });
+
+    const context = results.documents.flat().join('\n');
+    this.logger.debug(`Context retrieved: ${context}`);
+
+    const model = this.gemini.getGenerativeModel({ model: 'models/gemini-2.0-flash' });
+
+    const prompt = `Base your answer ONLY on the provided context".
 Context:
 ${context}
 
 Question: ${question}
 Answer in simple, patient-friendly terms:`;
 
-        const result = await model.generateContent(prompt);
-        return result.response.text();
-    }
+    const result = await model.generateContent(prompt);
+
+    const answer = result.response.text();
+    this.logger.log(`Generated answer: ${answer}`);
+
+    return answer;
+  }
 }
