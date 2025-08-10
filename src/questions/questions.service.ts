@@ -22,7 +22,7 @@ export class QuestionsService {
 
     const client = this.chromaService.getClient();
 
-    const collection = await client.getCollection({
+    const collection = await client.getOrCreateCollection({
       name: collectionName,
       embeddingFunction: this.embeddingFn,
     });
@@ -31,7 +31,11 @@ export class QuestionsService {
       queryEmbeddings,
       nResults: 2,
     });
-
+    
+    if (!results.documents.length || !results.documents[0].length) {
+      return "Sorry, I couldn't find relevant information to answer your question.";
+    }
+    
     const context = results.documents.flat().join('\n');
     this.logger.debug(`Context retrieved: ${context}`);
 

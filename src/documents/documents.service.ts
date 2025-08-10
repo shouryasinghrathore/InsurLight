@@ -24,28 +24,37 @@ export class DocumentsService {
 
         // 2. Split text into chunks
         const splitter = new RecursiveCharacterTextSplitter({
-            chunkSize: 200,    // smaller chunks (~200 chars)
-            chunkOverlap: 20,  // less overlap
-          });
+            chunkSize: 230,
+            chunkOverlap: 25,
+        });
         const splitDocs = await splitter.splitDocuments(docs);
 
         // 3. Create collection in Chroma Cloud
         const client = this.chromaService.getClient();
         const collection = await client.getOrCreateCollection({
             name: collectionName,
-            embeddingFunction: this.embeddingFn
+            embeddingFunction: this.embeddingFn,
         });
 
-        // 4. Store embeddings
-        for (let i = 0; i < splitDocs.length; i++) {
-            const embedding = await this.embedText(splitDocs[i].pageContent);
-            await collection.add({
-                ids: [String(i)],
-                documents: [splitDocs[i].pageContent],
-                embeddings: [embedding],
-            });
-        }
+        // 4. Prepare batch data
+        const baseId = Date.now().toString();
+        const docsText = splitDocs.map(d => d.pageContent);
+        const embeddings = await Promise.all(docsText.map(text => this.embedText(text)));
+        const ids = docsText.map((_, i) => `${baseId}-${i}`);
+        const metadatas = splitDocs.map((_, i) => ({
+            sourceFile: filePath,
+            chunkIndex: i,
+            timestamp: new Date().toISOString(),
+        }));
 
-        return { message: 'Document indexed successfully', chunks: splitDocs.length };
+        // 5. Add all chunks at once
+        await collection.add({
+            ids,
+            documents: docsText,
+            embeddings,
+            metadatas,
+        });
+
+        return { message: 'Document indexed successfully', chunks: splitDocs.length, collectionName };
     }
 }

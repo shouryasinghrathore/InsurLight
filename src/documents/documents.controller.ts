@@ -11,26 +11,30 @@ export class DocumentsController {
   @Post('upload')
   @UseInterceptors(FileInterceptor('file'))
   async uploadFile(@UploadedFile() file: Express.Multer.File) {
-    const filePath = `./uploads/${file.originalname}`;
-    
-    // Create uploads directory if it doesn't exist
-    if (!fs.existsSync('./uploads')) {
-      fs.mkdirSync('./uploads');
+    const uploadsDir = './uploads';
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir);
     }
 
+    const filePath = `${uploadsDir}/${file.originalname}`;
+
     try {
-      // Write file temporarily
+      // Save uploaded file temporarily
       fs.writeFileSync(filePath, file.buffer);
-      
-      // Process and index the file
-      const result = await this.docsService.uploadAndIndex(filePath, 'star_docs');
-      
-      // Clean up: remove the temporary file
+
+      // Generate unique collection name per upload:
+      const timestamp = Date.now();
+      const safeFileName = file.originalname.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const collectionName = `doc_${safeFileName}_${timestamp}`;
+
+      // Upload and index document in a new collection
+      const result = await this.docsService.uploadAndIndex(filePath, collectionName);
+
+      // Remove the temp file after processing
       fs.unlinkSync(filePath);
-      
+
       return result;
     } catch (error) {
-      // Clean up in case of error too
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
       }
